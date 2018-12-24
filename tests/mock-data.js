@@ -5,6 +5,7 @@
 
 const constants = require('../lib/constants');
 const ProofPurposeHandler = require('../lib/proof-purpose/ProofPurposeHandler');
+const {Ed25519KeyPair, RSAKeyPair} = require('../lib/suites/LDKeyPair');
 
 const mock = {};
 module.exports = mock;
@@ -44,10 +45,20 @@ privateKeys.alice = {
     '8Mezti8HCizDxPb+H8HlJMSkfoHx1veWkdLaPWRFrA==\n' +
     '-----END RSA PRIVATE KEY-----'
 };
+publicKeys.aliceBtc = {
+  '@context': constants.SECURITY_CONTEXT_URL,
+  id: 'ecdsa-koblitz-pubkey:1LGpGhGK8whX23ZNdxrgtjKrek9rP4xWER',
+  type: 'CryptographicKey',
+  owner: 'https://example.com/i/alice',
+  publicKeyWif: '1LGpGhGK8whX23ZNdxrgtjKrek9rP4xWER'
+};
+privateKeys.aliceBtc = {
+  privateKeyWif: 'L4mEi7eEdTNNFQEWaa7JhUKAbtHdVvByGAqvpJKC53mfiqunjBjw'
+};
 controllers.alice = {
   '@context': constants.SECURITY_CONTEXT_URL,
   id: publicKeys.alice.owner,
-  publicKey: [publicKeys.alice],
+  publicKey: [publicKeys.alice, publicKeys.aliceBtc],
   'https://example.org/special-authentication': {
     publicKey: publicKeys.alice.id
   }
@@ -195,7 +206,7 @@ mock.testLoader = async url => {
     };
   }
   throw new Error(`Document "${url}" not found.`);
-}
+};
 
 mock.NOOP_PROOF_PURPOSE_URI = 'https://example.org/special-authentication';
 
@@ -206,16 +217,249 @@ class NoOpProofPurpose extends ProofPurposeHandler {
     // be in expanded form as demonstrated here
     this.uri = mock.NOOP_PROOF_PURPOSE_URI;
   }
-  async validate({document, proof, purposeParameters}) {
+  async validate() {
     return {valid: true};
   }
   // the proof provided here is compacted into the SECURITY_CONTEXT
-  async updateProof({proof, purposeParameters}) {
+  async update({proof}) {
     // TODO: We may not want to mutate the proof passed in
     proof.proofPurpose = this.uri;
     // the proof returned here *must* be compacted into the SECURITY_CONTEXT
     return proof;
   }
+  async match() {
+    return true;
+  }
 }
 
 mock.NoOpProofPurpose = NoOpProofPurpose;
+
+mock.nonSecurityContextTestDoc = {
+  '@context': {
+    '@version': 1.1,
+    schema: 'http://schema.org/',
+    name: 'schema:name',
+    homepage: 'schema:url',
+    image: 'schema:image',
+    signature: {
+      '@id': 'https://w3id.org/security#signature',
+      '@type': '@id'
+    },
+    proof: {
+      '@id': 'https://w3id.org/security#proof',
+      '@type': '@id',
+      '@container': '@graph'
+    }
+  },
+  name: 'Manu Sporny',
+  homepage: 'https://manu.sporny.org/',
+  image: 'https://manu.sporny.org/images/manu.png'
+};
+
+mock.nonSecurityContextSigned = {};
+
+mock.nonSecurityContextSigned.EcdsaKoblitzSignature2016 = {
+  ...mock.nonSecurityContextTestDoc,
+  "signature": {
+    "@type": "EcdsaKoblitzSignature2016",
+    "http://purl.org/dc/terms/created": {
+      "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "@value": "2017-03-25T22:01:04Z"
+    },
+    "http://purl.org/dc/terms/creator": {
+      "@id": publicKeys.aliceBtc.id
+    },
+    "https://w3id.org/security#signatureValue":
+      "IOoF0rMmpcdxNZFoirTpRMCyLr8kGHLqXFl7v+m3naetCx+OLNhVY/6SCUwDGZf" +
+      "Fs4yPXeAl6Tj1WgtLIHOVZmw="
+  }
+};
+
+mock.nonSecurityContextSigned.Ed25519Signature2018 = {
+  ...mock.nonSecurityContextTestDoc,
+  "proof": {
+    "@type": "https://w3id.org/security#Ed25519Signature2018",
+    "http://purl.org/dc/terms/created": {
+      "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "@value": "2018-02-13T21:26:08Z"
+    },
+    "http://purl.org/dc/terms/creator": {
+      "@id": publicKeys.carol.id
+    },
+    "https://w3id.org/security#jws":
+      "eyJhbGciOiJFZERTQSIsImI2NCI6ZmFsc2UsImNyaXQiOlsiYjY0Il19" +
+      ".." +
+      "UNcNI6x6KDA_hHux2RLM8_i9aoZY34GwcZevOjkSh22WoNB4FcP6dNgf2nKzX" +
+      "XJIr-IqUnEwMYeD36fc8jv1AA",
+    "https://w3id.org/security#proofPurpose": {
+      "@id": mock.NOOP_PROOF_PURPOSE_URI
+    }
+  }
+};
+
+mock.nonSecurityContextSigned.RsaSignature2018 = {
+  ...mock.nonSecurityContextTestDoc,
+  "proof": {
+    "@type": "https://w3id.org/security#RsaSignature2018",
+    "http://purl.org/dc/terms/created": {
+      "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "@value": "2018-02-22T15:16:04Z"
+    },
+    "http://purl.org/dc/terms/creator": {
+      "@id": publicKeys.alice.id
+    },
+    "https://w3id.org/security#jws":
+      "eyJhbGciOiJQUzI1NiIsImI2NCI6ZmFsc2UsImNyaXQiOlsiYjY0Il19" +
+      ".." +
+      "KbIsIghAzxk5cs2uBYGO60RgV342Fppcz5AYy9u-BgbEbRwBlh0sB3wCvbKL" +
+      "eUlMyccltvqLUvhJTiW0mrM9TC-JAk4-Cr0zIQ9zrZ2g3SAHEe5hxT5dpCEg" +
+      "PB8uIZZV3XqxDgJRWgd1BvrA3hqHMqqh3CTh85KNa8wZqlTnjkM",
+    "https://w3id.org/security#proofPurpose": {
+      "@id": mock.NOOP_PROOF_PURPOSE_URI
+    }
+  }
+};
+
+mock.securityContextTestDoc = {
+  ...mock.nonSecurityContextTestDoc,
+  '@context': [
+    {'@version': 1.1},
+    mock.nonSecurityContextTestDoc['@context'],
+    constants.SECURITY_CONTEXT_URL]
+};
+
+mock.securityContextSigned = {};
+
+mock.securityContextSigned.EcdsaKoblitzSignature2016 = {
+  ...mock.securityContextTestDoc,
+  "signature": {
+    "type": "EcdsaKoblitzSignature2016",
+    "created": "2017-03-25T22:01:04Z",
+    "creator": publicKeys.aliceBtc.id,
+    "signatureValue":
+      "IOoF0rMmpcdxNZFoirTpRMCyLr8kGHLqXFl7v+m3naetCx+OLNhVY/6SCUwDGZf" +
+      "Fs4yPXeAl6Tj1WgtLIHOVZmw="
+  }
+};
+
+mock.securityContextSigned.Ed25519Signature2018 = {
+  ...mock.securityContextTestDoc,
+  "proof": {
+    "type": "Ed25519Signature2018",
+    "created": "2018-02-13T21:26:08Z",
+    "creator": publicKeys.carol.id,
+    "jws":
+      "eyJhbGciOiJFZERTQSIsImI2NCI6ZmFsc2UsImNyaXQiOlsiYjY0Il19" +
+      ".." +
+      "UNcNI6x6KDA_hHux2RLM8_i9aoZY34GwcZevOjkSh22WoNB4FcP6dNgf2nKzX" +
+      "XJIr-IqUnEwMYeD36fc8jv1AA",
+    "proofPurpose": mock.NOOP_PROOF_PURPOSE_URI
+  }
+};
+
+mock.securityContextSigned.RsaSignature2018 = {
+  ...mock.securityContextTestDoc,
+  "proof": {
+    "type": "RsaSignature2018",
+    "created": "2018-02-22T15:16:04Z",
+    "creator": publicKeys.alice.id,
+    "jws":
+      "eyJhbGciOiJQUzI1NiIsImI2NCI6ZmFsc2UsImNyaXQiOlsiYjY0Il19" +
+      ".." +
+      "KbIsIghAzxk5cs2uBYGO60RgV342Fppcz5AYy9u-BgbEbRwBlh0sB3wCvbKL" +
+      "eUlMyccltvqLUvhJTiW0mrM9TC-JAk4-Cr0zIQ9zrZ2g3SAHEe5hxT5dpCEg" +
+      "PB8uIZZV3XqxDgJRWgd1BvrA3hqHMqqh3CTh85KNa8wZqlTnjkM",
+    "proofPurpose": mock.NOOP_PROOF_PURPOSE_URI
+  }
+};
+
+mock.securityContextInvalidSignature = {};
+
+mock.securityContextInvalidSignature.EcdsaKoblitzSignature2016 = {
+  ...mock.securityContextTestDoc,
+  "signature": {
+    "type": "EcdsaKoblitzSignature2016",
+    "created": "2017-03-25T22:01:04Z",
+    "creator": publicKeys.aliceBtc.id,
+    "signatureValue":
+      "IOoF0rMmpcdxNZFoirTpRMCyLr8kGHLqXFl7v+m3naetCx+OLNhVY/6SCUwDGZf" +
+      "Fs4yPXeAl6Tj1WgtLIHOVZmw="
+  }
+};
+
+mock.securityContextInvalidSignature.Ed25519Signature2018 = {
+  ...mock.securityContextTestDoc,
+  "proof": {
+    "type": "Ed25519Signature2018",
+    "created": "2018-02-13T21:26:08Z",
+    "creator": publicKeys.carol.id,
+    "jws":
+      "eyJhbGciOiJFZERTQSIsImI2NCI6ZmFsc2UsImNyaXQiOlsiYjY0Il19" +
+      ".." +
+      "ANcNI6x6KDA_hHux2RLM8_i9aoZY34GwcZevOjkSh22WoNB4FcP6dNgf2nKzX" +
+      "XJIr-IqUnEwMYeD36fc8jv1AA",
+    "proofPurpose": mock.NOOP_PROOF_PURPOSE_URI
+  }
+};
+
+mock.securityContextInvalidSignature.RsaSignature2018 = {
+  ...mock.securityContextTestDoc,
+  "proof": {
+    "type": "RsaSignature2018",
+    "created": "2018-02-22T15:16:04Z",
+    "creator": publicKeys.alice.id,
+    "jws":
+      "eyJhbGciOiJQUzI1NiIsImI2NCI6ZmFsc2UsImNyaXQiOlsiYjY0Il19" +
+      ".." +
+      "AbIsIghAzxk5cs2uBYGO60RgV342Fppcz5AYy9u-BgbEbRwBlh0sB3wCvbKL" +
+      "eUlMyccltvqLUvhJTiW0mrM9TC-JAk4-Cr0zIQ9zrZ2g3SAHEe5hxT5dpCEg" +
+      "PB8uIZZV3XqxDgJRWgd1BvrA3hqHMqqh3CTh85KNa8wZqlTnjkM",
+    "proofPurpose": mock.NOOP_PROOF_PURPOSE_URI
+  }
+};
+
+mock.parameters = {};
+
+mock.parameters.sign = {};
+mock.parameters.verify = {};
+mock.parameters.verifyWithPassedKey = mock.parameters.sign;
+
+mock.parameters.sign.Ed25519Signature2018 = {
+  creator: publicKeys.carol.id,
+  date: '2018-02-13T21:26:08Z',
+  key: new Ed25519KeyPair({
+    privateKeyBase58: mock.privateKeys.carol.privateKeyBase58,
+    ...mock.publicKeys.carol
+  })
+};
+
+mock.parameters.sign.RsaSignature2018 = {
+  creator: publicKeys.alice.id,
+  date: '2018-02-22T15:16:04Z',
+  key: new RSAKeyPair({
+    privateKeyPem: mock.privateKeys.alice.privateKeyPem,
+    ...mock.publicKeys.alice
+  })
+};
+
+mock.parameters.sign.EcdsaKoblitzSignature2016 = {
+  creator: publicKeys.aliceBtc.id,
+  date: '2018-02-13T21:26:08Z',
+  privateKeyWif: mock.privateKeys.aliceBtc.privateKeyWif,
+  publicKeyWif: mock.privateKeys.aliceBtc.publicKeyWif
+};
+
+mock.parameters.verify.Ed25519Signature2018 = {
+  creator: publicKeys.carol.id,
+  date: '2018-02-13T21:26:08Z'
+};
+
+mock.parameters.verify.RsaSignature2018 = {
+  creator: publicKeys.alice.id,
+  date: '2018-02-22T15:16:04Z'
+};
+
+mock.parameters.verify.EcdsaKoblitzSignature2016 = {
+  creator: publicKeys.aliceBtc.id,
+  date: '2018-02-13T21:26:08Z'
+};
